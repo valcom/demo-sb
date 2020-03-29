@@ -2,11 +2,16 @@ package com.example.demo;
 
 import static org.junit.Assert.assertThat;
 
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 
-import javax.annotation.PostConstruct;
-
 import org.json.JSONException;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.skyscreamer.jsonassert.JSONAssert;
@@ -33,48 +38,46 @@ import com.example.demo.model.PersonaModel;
 @SpringBootTest(classes=DemoApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(locations="classpath:application-test.properties")
 public class DemoApplicationTests {
-	@Value("${url.base}")
-	private String baseUrl;
+	@Value("${endpoint}")
+	private String endpoint;
 	
 	@LocalServerPort
 	private int port;
 	
-	private String url;
+	private URI uri;
 	
-	@PostConstruct
-	public void init() {
-		url=baseUrl+":"+port;
-		//UriComponentsBuilder.fromHttpUrl("{url.base}:${local.server.port}/demo/persona").build().encode().toUri();
+	@Autowired
+	private TestRestTemplate restTemplate;
+	
+	@Before
+	public void init() throws MalformedURLException {
+		uri = UriComponentsBuilder.fromHttpUrl(endpoint+":"+port+"/demo/persona").build().encode().toUri();
 	    restTemplate.getRestTemplate().setRequestFactory(new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory()));
 		restTemplate.getRestTemplate().getInterceptors().add(new RequestResponseLoggingInterceptor());
 	}
-	
-
-	@Autowired
-	private TestRestTemplate restTemplate;
 
 	@Test
-	public void testJSON() throws JSONException {
+	public void testJSON() throws IOException, URISyntaxException, JSONException  {
 		HttpHeaders headers = new HttpHeaders();
 		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
 		HttpEntity<String> entity = new HttpEntity<String>(headers);
-		ResponseEntity<String> response = restTemplate.exchange(url+"/demo/persona",HttpMethod.GET,entity,String.class);
-		String expected = "{nome:pippo,cognome:baudo,cf:XXXXXXXXXXXXX}";
+		ResponseEntity<String> response = restTemplate.exchange(uri,HttpMethod.GET,entity,String.class);
+		String expected = new String(Files.readAllBytes(Paths.get(this.getClass().getClassLoader().getResource("persona.json").toURI())));
 		JSONAssert.assertEquals(expected, response.getBody(), false);
 	}
 	@Test
-	public void testXML() {
+	public void testXML() throws IOException, URISyntaxException  {
 		HttpHeaders headers = new HttpHeaders();
 		headers.setAccept(Arrays.asList(MediaType.APPLICATION_XML));
 		HttpEntity<String> entity = new HttpEntity<String>(headers);
-		ResponseEntity<String> response = restTemplate.exchange(url+"/demo/persona",HttpMethod.GET, entity, String.class);
-		String expected = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><persona><cf>XXXXXXXXXXXXX</cf><cognome>baudo</cognome><nome>pippo</nome></persona>";
-		assertThat(expected, CompareMatcher.isIdenticalTo(response.getBody()));
+		ResponseEntity<String> response = restTemplate.exchange(uri,HttpMethod.GET, entity, String.class);
+		String expected = new String(Files.readAllBytes(Paths.get(getClass().getClassLoader().getResource("persona.xml").toURI())));
+		assertThat(expected, CompareMatcher.isIdenticalTo(response.getBody()).normalizeWhitespace());
 	}
 	
 	@Test
 	public void testObject() {
-		PersonaModel response = restTemplate.getForObject(url+"/demo/persona", PersonaModel.class);
+		PersonaModel response = restTemplate.getForObject(uri, PersonaModel.class);
 		PersonaModel expected = new PersonaModel();
 		expected.setNome("pippo");
 		expected.setCognome("baudo");
